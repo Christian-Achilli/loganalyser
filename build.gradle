@@ -17,11 +17,14 @@ def watchForChange = 'src/**/*'
 def doOnChange = './gradlew classes'
 
 dependencies {
-  compile "io.vertx:vertx-core:$vertxVersion"
-  compile "io.vertx:vertx-sql-common:$vertxVersion"
-  compile "io.vertx:vertx-reactive-streams:$vertxVersion"
-  testCompile "junit:junit:4.12"
-  testCompile "io.vertx:vertx-unit:$vertxVersion"
+  implementation "io.vertx:vertx-core:$vertxVersion"
+  implementation "io.vertx:vertx-jdbc-client:$vertxVersion"
+  implementation "io.vertx:vertx-sql-common:$vertxVersion"
+  implementation "io.vertx:vertx-reactive-streams:$vertxVersion"
+  implementation "org.hsqldb:hsqldb:2.4.1"
+  implementation "com.google.code.gson:gson:2.8.5"
+  testImplementation "junit:junit:4.12"
+  testImplementation "io.vertx:vertx-unit:$vertxVersion"
 }
 
 shadowJar {
