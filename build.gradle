@@ -12,13 +12,14 @@ sourceCompatibility = '1.8'
 mainClassName = 'io.vertx.core.Launcher'
 
 def vertxVersion = '3.5.4'
-def mainVerticleName = 'io.vertx.starter.MainVerticle'
+def mainVerticleName = 'com.interview.cs.loganalyser.MainVerticle'
 def watchForChange = 'src/**/*'
 def doOnChange = './gradlew classes'
 
 dependencies {
   compile "io.vertx:vertx-core:$vertxVersion"
   compile "io.vertx:vertx-sql-common:$vertxVersion"
+  compile "io.vertx:vertx-reactive-streams:$vertxVersion"
   testCompile "junit:junit:4.12"
   testCompile "io.vertx:vertx-unit:$vertxVersion"
 }

@@ -1,4 +1,4 @@
-package io.vertx.starter;
+package com.interview.cs.loganalyser;
 
 import io.vertx.core.Vertx;
 import io.vertx.ext.unit.Async;
