@@ -55,15 +55,12 @@ public class MainVerticle extends AbstractVerticle {
     RecordParser recordParser = newDelimited("\n",
       processedLogLine -> logLineProcessor(tempMap, processedLogLine,
         insertParameters -> singleSaveBuffer(insertParameters,
-          Future.future(r -> {
-            System.out.print(".");
-            insertedRecords.incrementAndGet();
-          }))));
+          Future.future(r -> insertedRecords.incrementAndGet()))));
 
 
     client.getConnection(conn -> {
       if (conn.failed()) {
-        System.err.println(conn.cause().getMessage());
+        LOG.error("FATAL: could not obtain db connection: "+conn.cause().getMessage(), conn.cause());
         return;
       }
       final SQLConnection connection = conn.result();
@@ -95,9 +92,12 @@ public class MainVerticle extends AbstractVerticle {
   }
 
   private void logLineProcessor(LocalMap<String, String> tempMap, Buffer rawLogLine, Handler<Buffer> bufferHandler) {
-    analyzedLogLines.incrementAndGet();
+
+    if (analyzedLogLines.incrementAndGet() % 10000 == 0) {
+      LOG.info("So far analyzed: " +analyzedLogLines.intValue());
+    }
+
     LogLine logLine = gson.fromJson(rawLogLine.toJsonObject().toString(), LogLine.class);
-    //System.out.println("LogLine id: " + logLine.id);
     LogLine logInMap = gson.fromJson(tempMap.get(logLine.id), LogLine.class);
     if (null == logInMap) {
       tempMap.put(logLine.id, rawLogLine.toJsonObject().toString());
@@ -123,16 +123,17 @@ public class MainVerticle extends AbstractVerticle {
   }
 
   private void closeDown(long started, LocalMap<String, String> tempMap, SQLConnection connection) {
-    System.out.println("Done inserting to DB");
-    System.out.println("TempMap size /1: " + tempMap.size());
+    LOG.info("Done inserting to DB");
+    LOG.debug("TempMap size /1: " + tempMap.size());
 
     connection.close(done -> {
-      System.out.println("DB Connection closed.");
-      System.out.println("TempMap size /2: " + tempMap.size());
-      System.out.println("Completed in :" + (System.currentTimeMillis() - started));
-      System.out.println("Total rows to DB: " + insertedRecords.getAndIncrement());
-      System.out.println("Total rows analyzed: " + analyzedLogLines.getAndIncrement());
+      LOG.debug("DB Connection closed.");
+      LOG.debug("TempMap size /2: " + tempMap.size());
+      LOG.info("Completed in :" + (System.currentTimeMillis() - started));
+      LOG.info("Total rows to DB: " + insertedRecords.getAndIncrement());
+      LOG.info("Total rows analyzed: " + analyzedLogLines.getAndIncrement());
       if (done.failed()) {
+        LOG.error("Exception while closing the DB connection during the closeDown procedure", done.cause());
         throw new RuntimeException(done.cause());
       }
     });
@@ -144,18 +145,20 @@ public class MainVerticle extends AbstractVerticle {
       SQLConnection singleConnection = connection.result();
       singleConnection.queryWithParams(INSERT_RAW_LOG, jsonArray.toJsonArray(), insertResult -> {
         if (insertResult.failed()) {
-          System.err.println("Error inserting " + jsonArray.toJsonArray() + ": " + insertResult.cause());
-          insertResult.cause().printStackTrace();
+          LOG.warn("WARNING: Error inserting " + jsonArray.toJsonArray() + ": " + insertResult.cause().getMessage(), insertResult.cause());
           return;
         }
-        System.out.println("Saved: " + jsonArray.toJsonArray());
+        LOG.debug("Saved: " + jsonArray.toJsonArray());
         singleConnection.close();
         complete.complete();
       });
     });
   }
 
-  class LogLine {
+  /**
+   * DTO for the lines of the file to be analysed
+   */
+  private class LogLine {
     String id;
     String type;
     String host;
