@@ -22,8 +22,7 @@ gradle-app.setting
 /.settings/
 /.vertx/
 /.vscode/
-/logmonitor
-/TESTDB?shutdown=true.log
-/TESTDB?shutdown=true.properties
-/TESTDB?shutdown=true.script
-/TESTDB?shutdown=true.tmp/
+/db/
+/loganalyser.log*
+.DS_STORE
+/out/
