@@ -3,6 +3,7 @@ package com.interview.cs.loganalyser;
 
 import com.google.gson.Gson;
 import io.vertx.core.Future;
+import io.vertx.core.Handler;
 import io.vertx.core.file.OpenOptions;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -19,6 +20,8 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+import static io.vertx.rxjava.core.parsetools.RecordParser.newDelimited;
+
 public class MainVerticle extends AbstractVerticle {
 
 
@@ -30,11 +33,9 @@ public class MainVerticle extends AbstractVerticle {
     .put("auto_commit_on_close", true);
   Gson gson = new Gson();
   private static final String TABLE_NAME = "LOG_MONITOR";
-  private static final String INSERT_RAW_LOG = "insert into "+ TABLE_NAME +" values(?,?,?,?,?)";
-  //first iteration, duration=timestamp and alert=state
-  private static final String CREATE_TABLE = "create TEXT table "+ TABLE_NAME +"( id varchar(10), duration bigint, type varchar(50), host varchar(20), alert varchar(10))";
-  private static final String SET_TABLE = "SET TABLE "+TABLE_NAME+" SOURCE \"logmonitor;ignore_first=false;all_quoted=true;cache_rows=10000;cache_size=1000\"";
-
+  private static final String INSERT_RAW_LOG = "INSERT INTO " + TABLE_NAME + " VALUES(?,?,?,?,?)";
+  private static final String CREATE_TABLE = "CREATE TEXT TABLE IF NOT EXISTS " + TABLE_NAME + "( id varchar(10), duration bigint, type varchar(50), host varchar(20), alert varchar(10))";
+  private static final String SET_TABLE = "SET TABLE " + TABLE_NAME + " SOURCE \"logmonitor;ignore_first=false;all_quoted=true;cache_rows=10000;cache_size=1000\"";
 
   private JDBCClient client;
 
@@ -46,13 +47,18 @@ public class MainVerticle extends AbstractVerticle {
 
     long started = System.currentTimeMillis();
 
-    AsyncFile asyncFile = vertx.fileSystem().openBlocking("smallsample.log", new OpenOptions().setRead(true).setWrite(false).setCreate(false));
+    AsyncFile asyncFile = vertx.fileSystem().openBlocking("src/main/resources/sample45.log", new OpenOptions().setRead(true).setWrite(false).setCreate(false));
 
     client = JDBCClient.createShared(vertx, config);
+    LocalMap<String, String> tempMap = vertx.sharedData().getLocalMap("log-ids");
+    List<JsonArray> parametersList = new ArrayList<>();
+    AsyncFile asyncTempInserts = vertx.fileSystem().openBlocking("src/main/resources/tempInserts.log", new OpenOptions().setRead(true).setWrite(true).setCreate(true));
+    RecordParser recordParser = newDelimited("\n", data -> {
+      logLineProcessor(counter, tempMap, parametersList, data, newData -> asyncTempInserts.write(newData));
+    });
 
     client.getConnection(conn -> {
-      LocalMap<String, String> tempMap = vertx.sharedData().getLocalMap("log-ids");
-      List<JsonArray> parametersList = new ArrayList<>();
+
 
       //System.out.println("TempMap size: "+tempMap.size());
       if (conn.failed()) {
@@ -62,50 +68,45 @@ public class MainVerticle extends AbstractVerticle {
 
       final SQLConnection connection = conn.result();
 
-      RecordParser recordParser = RecordParser.newDelimited("\n", data -> {
-
-        logLineProcessor(counter, tempMap, parametersList, data);
-
-
-      });//end record parser
 
       //drop
-      connection.execute("drop table "+TABLE_NAME, dropres -> {
-        if (dropres.failed()) {
-          System.err.println(dropres.cause());
+      connection.execute("TRUNCATE TABLE " + TABLE_NAME, truncate -> {
+        if (truncate.failed()) {
+          System.err.println(truncate.cause());
         }
-        //create
-        connection.execute(CREATE_TABLE, res -> {
-          if (res.failed()) {
-            connection.close();
-            throw new RuntimeException(res.cause());
-          } else {
-            connection.execute(SET_TABLE, settable -> {
+        connection.execute("COMMIT", commit -> {
+          //create
+          connection.execute(CREATE_TABLE, res -> {
+            if (res.failed()) {
+              connection.close();
+              throw new RuntimeException(res.cause());
+            } else {
+              connection.execute(SET_TABLE, settable -> {
 
 
-              asyncFile.handler(recordParser).endHandler(v -> {
-                asyncFile.close();
+                asyncFile.handler(recordParser).endHandler(v -> {
+                  asyncFile.close();
 
-                Future endBatchSave = Future.future(n -> closeDown(counter, started, tempMap, connection));
-                if (parametersList.size() != 0) {
-                  System.out.println("saving the last batch");
-                  batchSave(counter, tempMap, parametersList, endBatchSave);
-                } else {
-                  closeDown(counter, started, tempMap, connection);
-                }
+                  Future endBatchSave = Future.future(n -> closeDown(counter, started, tempMap, connection));
+                  if (parametersList.size() != 0) {
+                    System.out.println("saving the last batch");
+                    batchSave(counter, tempMap, parametersList, endBatchSave);
+                  } else {
+                    closeDown(counter, started, tempMap, connection);
+                  }
 
-              });//end async file handler
-            });
-
-          }
-        });
-      });
-    });
+                });//end async file handler
+              });// end SET table
+            }// else
+          });// end create table
+        }); //end commit
+      });// end drop table
+    });// end get connection
   }
 
-  private void logLineProcessor(AtomicInteger counter, LocalMap<String, String> tempMap, List<JsonArray> parametersList, Buffer data) {
+  private void logLineProcessor(AtomicInteger counter, LocalMap<String, String> tempMap, List<JsonArray> parametersList, Buffer data, Handler<Buffer> newData) {
     LogLine logLine = gson.fromJson(data.toJsonObject().toString(), LogLine.class);
-    System.out.println("LogLine id: " + logLine.id);
+    //System.out.println("LogLine id: " + logLine.id);
     LogLine logInMap = gson.fromJson(tempMap.get(logLine.id), LogLine.class);
     if (null == logInMap) {
       tempMap.put(logLine.id, data.toJsonObject().toString());
@@ -126,8 +127,10 @@ public class MainVerticle extends AbstractVerticle {
         .add(logLine.host == null ? "" : logLine.host)
         .add(alert);
 
+      newData.handle(new Buffer(params.toBuffer()));
 
       parametersList.add(params);
+
 
       if (counter.incrementAndGet() % 10000 == 0) {
         batchSave(counter, tempMap, parametersList, null);
@@ -141,7 +144,7 @@ public class MainVerticle extends AbstractVerticle {
     System.out.println("Done inserting to DB");
     System.out.println("TempMap size /1: " + tempMap.size());
     AtomicInteger selectCounter = new AtomicInteger();
-    connection.queryStream("select * from "+TABLE_NAME, selectall -> {
+    connection.queryStream("select * from " + TABLE_NAME, selectall -> {
       selectall.result().handler(row -> {
         System.out.println(row.encode());
         selectCounter.getAndIncrement();
