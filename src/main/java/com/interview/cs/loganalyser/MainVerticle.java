@@ -7,6 +7,8 @@ import io.vertx.core.Handler;
 import io.vertx.core.file.OpenOptions;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import io.vertx.core.logging.Logger;
+import io.vertx.core.logging.LoggerFactory;
 import io.vertx.rxjava.core.AbstractVerticle;
 import io.vertx.rxjava.core.buffer.Buffer;
 import io.vertx.rxjava.core.file.AsyncFile;
@@ -23,10 +25,11 @@ import static io.vertx.rxjava.core.parsetools.RecordParser.newDelimited;
 
 public class MainVerticle extends AbstractVerticle {
 
+  private static final Logger LOG = LoggerFactory.getLogger(MainVerticle.class);
 
   private long threshold = 4;
   private JsonObject config = new JsonObject()
-    .put("url", "jdbc:hsqldb:file:TESTDB?shutdown=true")
+    .put("url", "jdbc:hsqldb:file:db/TESTDB?shutdown=true")
     .put("driver_class", "org.hsqldb.jdbcDriver")
     .put("max_pool_size", 50)
     .put("auto_commit_on_close", true);
