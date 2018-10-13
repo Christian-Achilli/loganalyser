@@ -17,9 +17,7 @@ import io.vertx.rxjava.core.shareddata.LocalMap;
 import io.vertx.rxjava.ext.jdbc.JDBCClient;
 import io.vertx.rxjava.ext.sql.SQLConnection;
 
-import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 import static io.vertx.rxjava.core.parsetools.RecordParser.newDelimited;
 
@@ -68,10 +66,7 @@ public class MainVerticle extends AbstractVerticle {
         System.err.println(conn.cause().getMessage());
         return;
       }
-
       final SQLConnection connection = conn.result();
-
-
       //drop
       connection.execute("TRUNCATE TABLE " + TABLE_NAME, truncate -> {
         if (truncate.failed()) {
@@ -85,24 +80,11 @@ public class MainVerticle extends AbstractVerticle {
               throw new RuntimeException(res.cause());
             } else {
               connection.execute(SET_TABLE, settable -> {
-
-
                 asyncFile
                   .handler(recordParser)
                   .endHandler(v -> {
-
                     asyncFile.close();
-
-                 /* Future endBatchSave = Future.future(n -> closeDown(counter, started, tempMap, connection));
-                  if (parametersList.size() != 0) {
-                    System.out.println("saving the last batch");
-                    batchSave(counter, tempMap, parametersList, endBatchSave);
-                  } else {
-                    closeDown(counter, started, tempMap, connection);
-                  }*/
-
                     closeDown(started, tempMap, connection);
-
                   });//end async file handler
               });// end SET table
             }// else
@@ -137,15 +119,6 @@ public class MainVerticle extends AbstractVerticle {
         .add(alert);
 
       bufferHandler.handle(new Buffer(params.toBuffer()));
-
-      // parametersList.add(params);
-
-
-     /* if (counter.incrementAndGet() % 10000 == 0) {
-        batchSave(counter, tempMap, parametersList, null);
-      } *///end if counter
-
-
     }
   }
 
@@ -162,31 +135,6 @@ public class MainVerticle extends AbstractVerticle {
       if (done.failed()) {
         throw new RuntimeException(done.cause());
       }
-    });
-  }
-
-  private void batchSave(AtomicInteger counter, LocalMap<String, String> tempMap, List<JsonArray> parametersList, Future endBatchSave) {
-
-    List<JsonArray> copyList = parametersList.stream().map(JsonArray::copy).collect(Collectors.toList());
-    System.out.println("Number of elements to batchsave: " + copyList.size());
-    System.out.println("Inserting to DB: " + counter.intValue() + " - parameters list size: " + copyList.size());
-    client.getConnection(conn2 -> {
-      SQLConnection batchConnection = conn2.result();
-      batchConnection.batchWithParams(INSERT_RAW_LOG, copyList, insertResult -> {
-        if (insertResult.failed()) {
-          System.err.println("Error inserting " + parametersList.size() + ": " + insertResult.cause());
-          insertResult.cause().printStackTrace();
-          return;
-        }
-        copyList.stream().forEach(jsonPar -> tempMap.remove(jsonPar.getString(0)));
-        parametersList.clear();
-        batchConnection.close();
-        System.out.println("Inserting to DB complete: " + counter.intValue() + " - parameters list size: " + copyList.size());
-        if (endBatchSave != null) {
-          endBatchSave.complete();
-        }
-      });
-
     });
   }
 
@@ -209,7 +157,6 @@ public class MainVerticle extends AbstractVerticle {
 
   class LogLine {
     String id;
-    String state;
     String type;
     String host;
     long timestamp;
