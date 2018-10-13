@@ -25,6 +25,7 @@ public class MainVerticle extends AbstractVerticle {
 
   private static final Logger LOG = LoggerFactory.getLogger(MainVerticle.class);
 
+
   private long threshold = 4;
   private JsonObject config = new JsonObject()
     .put("url", "jdbc:hsqldb:file:db/TESTDB?shutdown=true")
@@ -40,14 +41,39 @@ public class MainVerticle extends AbstractVerticle {
   private final AtomicInteger analyzedLogLines = new AtomicInteger();
   private JDBCClient client;
 
+  private String fileName;
+
+  public MainVerticle() {
+    //InternalLoggerFactory.setDefaultFactory(Log4JLoggerFactory.INSTANCE);
+    //input parameters
+
+
+
+/*    System.out.println("Hello and welcome. \n Please execute this application from the folder where the log file is.");
+    System.out.println("Please insert the name of the file:");
+    Scanner scanner = new Scanner(System.in);
+    fileName = scanner.nextLine();
+    System.out.println("Your file name is " + fileName);*/
+
+    //
+//TODO if you don't delete the previous run the data will be appended to the current DB
+  }
+
 
   @Override
   public void start(Future<Void> fut) {
 
+    fileName = config().getString("file.name");
+    System.out.println("------->>>>>>> "+fileName);
+
+    if(vertx.fileSystem().existsBlocking("db/")) {
+      vertx.fileSystem().deleteRecursiveBlocking("db/", true);
+    }
+
 
     long started = System.currentTimeMillis();
 
-    AsyncFile asyncFile = vertx.fileSystem().openBlocking("src/main/resources/smallsample.log", new OpenOptions().setRead(true).setWrite(false).setCreate(false));
+    AsyncFile asyncFile = vertx.fileSystem().openBlocking(fileName, new OpenOptions().setRead(true).setWrite(false).setCreate(false));
 
     client = JDBCClient.createShared(vertx, config);
     LocalMap<String, String> tempMap = vertx.sharedData().getLocalMap("log-ids");
@@ -82,6 +108,7 @@ public class MainVerticle extends AbstractVerticle {
                   .endHandler(v -> {
                     asyncFile.close();
                     closeDown(started, tempMap, connection);
+                    fut.complete();
                   });//end async file handler
               });// end SET table
             }// else
@@ -136,6 +163,7 @@ public class MainVerticle extends AbstractVerticle {
         LOG.error("Exception while closing the DB connection during the closeDown procedure", done.cause());
         throw new RuntimeException(done.cause());
       }
+
     });
   }
 
