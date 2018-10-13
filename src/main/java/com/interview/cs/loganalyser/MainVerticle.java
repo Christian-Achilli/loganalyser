@@ -7,6 +7,7 @@ import io.vertx.core.file.OpenOptions;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.rxjava.core.AbstractVerticle;
+import io.vertx.rxjava.core.buffer.Buffer;
 import io.vertx.rxjava.core.file.AsyncFile;
 import io.vertx.rxjava.core.parsetools.RecordParser;
 import io.vertx.rxjava.core.shareddata.LocalMap;
@@ -23,15 +24,17 @@ public class MainVerticle extends AbstractVerticle {
 
   private long threshold = 4;
   private JsonObject config = new JsonObject()
-    .put("url", "jdbc:hsqldb:mem:test?shutdown=true")
+    .put("url", "jdbc:hsqldb:file:TESTDB?shutdown=true")
     .put("driver_class", "org.hsqldb.jdbcDriver")
     .put("max_pool_size", 50)
     .put("auto_commit_on_close", true);
   Gson gson = new Gson();
-  private static final String INSERT_RAW_LOG = "insert into test values(?,?,?,?,?)";
+  private static final String TABLE_NAME = "LOG_MONITOR";
+  private static final String INSERT_RAW_LOG = "insert into "+ TABLE_NAME +" values(?,?,?,?,?)";
   //first iteration, duration=timestamp and alert=state
-  private static final String CREATE_TABLE = "create table test( id varchar(10), duration bigint, type varchar(50), host varchar(20), alert varchar(10))";
-  private static final String SELECT_BY_LOG_ID = "select * from test where id = ?";
+  private static final String CREATE_TABLE = "create TEXT table "+ TABLE_NAME +"( id varchar(10), duration bigint, type varchar(50), host varchar(20), alert varchar(10))";
+  private static final String SET_TABLE = "SET TABLE "+TABLE_NAME+" SOURCE \"logmonitor;ignore_first=false;all_quoted=true;cache_rows=10000;cache_size=1000\"";
+
 
   private JDBCClient client;
 
@@ -59,8 +62,15 @@ public class MainVerticle extends AbstractVerticle {
 
       final SQLConnection connection = conn.result();
 
+      RecordParser recordParser = RecordParser.newDelimited("\n", data -> {
+
+        logLineProcessor(counter, tempMap, parametersList, data);
+
+
+      });//end record parser
+
       //drop
-      connection.execute("drop table test", dropres -> {
+      connection.execute("drop table "+TABLE_NAME, dropres -> {
         if (dropres.failed()) {
           System.err.println(dropres.cause());
         }
@@ -70,68 +80,68 @@ public class MainVerticle extends AbstractVerticle {
             connection.close();
             throw new RuntimeException(res.cause());
           } else {
+            connection.execute(SET_TABLE, settable -> {
 
-            RecordParser recordParser = RecordParser.newDelimited("\n", data -> {
 
-              LogLine logLine = gson.fromJson(data.toJsonObject().toString(), LogLine.class);
-              System.out.println("LogLine id: " + logLine.id);
-              LogLine logInMap = gson.fromJson(tempMap.get(logLine.id), LogLine.class);
-              if (null == logInMap) {
-                tempMap.put(logLine.id, data.toJsonObject().toString());
-              } else {
-                //TODO handle error case when both state are the same (wrong log statement in the code)
-                //TODO handle error case when transaction id are not unique
-                long delta = Math.abs(logInMap.timestamp - logLine.timestamp);
-                //System.out.println("id: " + logLine.id + " - delta: " + delta);
-                String alert = "false";
-                if (delta >= threshold) {
-                  alert = "true";
+              asyncFile.handler(recordParser).endHandler(v -> {
+                asyncFile.close();
+
+                Future endBatchSave = Future.future(n -> closeDown(counter, started, tempMap, connection));
+                if (parametersList.size() != 0) {
+                  System.out.println("saving the last batch");
+                  batchSave(counter, tempMap, parametersList, endBatchSave);
+                } else {
+                  closeDown(counter, started, tempMap, connection);
                 }
 
-                JsonArray params = new JsonArray()
-                  .add(logLine.id)
-                  .add(delta)
-                  .add(logLine.type == null ? "" : logLine.type)
-                  .add(logLine.host == null ? "" : logLine.host)
-                  .add(alert);
+              });//end async file handler
+            });
 
-
-                parametersList.add(params);
-
-                if (counter.incrementAndGet() % 10000 == 0) {
-                  batchSave(counter, tempMap, parametersList, null);
-                } //end if counter
-
-
-              }
-
-
-            });//end record parser
-
-
-            asyncFile.handler(recordParser).endHandler(v -> {
-              asyncFile.close();
-
-              Future endBatchSave = Future.future(n -> closeDown(counter, started, tempMap, connection));
-              if (parametersList.size() != 0) {
-                System.out.println("saving the last batch");
-                batchSave(counter, tempMap, parametersList, endBatchSave);
-              } else {
-                closeDown(counter, started, tempMap, connection);
-              }
-
-            });//end async file handler
           }
         });
       });
     });
   }
 
+  private void logLineProcessor(AtomicInteger counter, LocalMap<String, String> tempMap, List<JsonArray> parametersList, Buffer data) {
+    LogLine logLine = gson.fromJson(data.toJsonObject().toString(), LogLine.class);
+    System.out.println("LogLine id: " + logLine.id);
+    LogLine logInMap = gson.fromJson(tempMap.get(logLine.id), LogLine.class);
+    if (null == logInMap) {
+      tempMap.put(logLine.id, data.toJsonObject().toString());
+    } else {
+      //TODO handle error case when both state are the same (wrong log statement in the code)
+      //TODO handle error case when transaction id are not unique
+      long delta = Math.abs(logInMap.timestamp - logLine.timestamp);
+      //System.out.println("id: " + logLine.id + " - delta: " + delta);
+      String alert = "false";
+      if (delta >= threshold) {
+        alert = "true";
+      }
+
+      JsonArray params = new JsonArray()
+        .add(logLine.id)
+        .add(delta)
+        .add(logLine.type == null ? "" : logLine.type)
+        .add(logLine.host == null ? "" : logLine.host)
+        .add(alert);
+
+
+      parametersList.add(params);
+
+      if (counter.incrementAndGet() % 10000 == 0) {
+        batchSave(counter, tempMap, parametersList, null);
+      } //end if counter
+
+
+    }
+  }
+
   private void closeDown(AtomicInteger counter, long started, LocalMap<String, String> tempMap, SQLConnection connection) {
     System.out.println("Done inserting to DB");
     System.out.println("TempMap size /1: " + tempMap.size());
     AtomicInteger selectCounter = new AtomicInteger();
-    connection.queryStream("select * from test", selectall -> {
+    connection.queryStream("select * from "+TABLE_NAME, selectall -> {
       selectall.result().handler(row -> {
         System.out.println(row.encode());
         selectCounter.getAndIncrement();
