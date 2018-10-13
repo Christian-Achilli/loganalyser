@@ -36,13 +36,13 @@ public class MainVerticle extends AbstractVerticle {
   private static final String CREATE_TABLE = "CREATE TEXT TABLE IF NOT EXISTS " + TABLE_NAME + "( id varchar(10), duration bigint, type varchar(50), host varchar(20), alert varchar(10))";
   private static final String SET_TABLE = "SET TABLE " + TABLE_NAME + " SOURCE \"logmonitor;ignore_first=false;all_quoted=true;cache_rows=10000;cache_size=1000\"";
   private final AtomicInteger insertedRecords = new AtomicInteger();
+  private final AtomicInteger analyzedLogLines = new AtomicInteger();
   private JDBCClient client;
 
 
   @Override
   public void start(Future<Void> fut) {
 
-    AtomicInteger counter = new AtomicInteger();
 
     long started = System.currentTimeMillis();
 
@@ -52,7 +52,7 @@ public class MainVerticle extends AbstractVerticle {
     LocalMap<String, String> tempMap = vertx.sharedData().getLocalMap("log-ids");
 
     RecordParser recordParser = newDelimited("\n",
-      processedLogLine -> logLineProcessor(counter, tempMap, processedLogLine,
+      processedLogLine -> logLineProcessor(tempMap, processedLogLine,
         insertParameters -> singleSaveBuffer(insertParameters,
           Future.future(r -> {
             System.out.print(".");
@@ -98,7 +98,7 @@ public class MainVerticle extends AbstractVerticle {
                     closeDown(counter, started, tempMap, connection);
                   }*/
 
-                    closeDown(counter, started, tempMap, connection);
+                    closeDown(started, tempMap, connection);
 
                   });//end async file handler
               });// end SET table
@@ -109,7 +109,8 @@ public class MainVerticle extends AbstractVerticle {
     });// end get connection
   }
 
-  private void logLineProcessor(AtomicInteger counter, LocalMap<String, String> tempMap, Buffer rawLogLine, Handler<Buffer> bufferHandler) {
+  private void logLineProcessor(LocalMap<String, String> tempMap, Buffer rawLogLine, Handler<Buffer> bufferHandler) {
+    analyzedLogLines.incrementAndGet();
     LogLine logLine = gson.fromJson(rawLogLine.toJsonObject().toString(), LogLine.class);
     //System.out.println("LogLine id: " + logLine.id);
     LogLine logInMap = gson.fromJson(tempMap.get(logLine.id), LogLine.class);
@@ -145,7 +146,7 @@ public class MainVerticle extends AbstractVerticle {
     }
   }
 
-  private void closeDown(AtomicInteger counter, long started, LocalMap<String, String> tempMap, SQLConnection connection) {
+  private void closeDown(long started, LocalMap<String, String> tempMap, SQLConnection connection) {
     System.out.println("Done inserting to DB");
     System.out.println("TempMap size /1: " + tempMap.size());
 
@@ -154,7 +155,7 @@ public class MainVerticle extends AbstractVerticle {
       System.out.println("TempMap size /2: " + tempMap.size());
       System.out.println("Completed in :" + (System.currentTimeMillis() - started));
       System.out.println("Total rows to DB: " + insertedRecords.getAndIncrement());
-      System.out.println("Total rows analyzed: " + counter.intValue());
+      System.out.println("Total rows analyzed: " + analyzedLogLines.getAndIncrement());
       if (done.failed()) {
         throw new RuntimeException(done.cause());
       }
