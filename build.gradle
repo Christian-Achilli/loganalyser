@@ -17,6 +17,7 @@ def watchForChange = 'src/**/*'
 def doOnChange = './gradlew classes'
 
 dependencies {
+  implementation "io.vertx:vertx-rx-java:$vertxVersion"
   implementation "io.vertx:vertx-core:$vertxVersion"
   implementation "io.vertx:vertx-jdbc-client:$vertxVersion"
   implementation "io.vertx:vertx-sql-common:$vertxVersion"
