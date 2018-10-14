@@ -2,6 +2,7 @@ package com.interview.cs.loganalyser;
 
 
 import com.google.gson.Gson;
+import io.netty.util.internal.StringUtil;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 import io.netty.util.internal.logging.Log4JLoggerFactory;
 import io.vertx.core.Future;
@@ -13,11 +14,12 @@ import io.vertx.rxjava.core.AbstractVerticle;
 import io.vertx.rxjava.core.buffer.Buffer;
 import io.vertx.rxjava.core.file.AsyncFile;
 import io.vertx.rxjava.core.parsetools.RecordParser;
-import io.vertx.rxjava.core.shareddata.LocalMap;
 import io.vertx.rxjava.ext.jdbc.JDBCClient;
 import io.vertx.rxjava.ext.sql.SQLConnection;
 import org.apache.log4j.Logger;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static io.vertx.rxjava.core.parsetools.RecordParser.newDelimited;
@@ -78,7 +80,7 @@ public class MainVerticle extends AbstractVerticle {
 
 
     client = JDBCClient.createShared(vertx, config);
-    LocalMap<String, String> tempMap = vertx.sharedData().getLocalMap("log-ids");
+    HashMap<String, String> tempMap = new HashMap<>();//vertx.sharedData().getLocalMap("log-ids");
 
     RecordParser recordParser = newDelimited("\n",
       processedLogLine -> logLineProcessor(tempMap, processedLogLine,
@@ -124,20 +126,29 @@ public class MainVerticle extends AbstractVerticle {
     });// end get connection
   }
 
-  private void logLineProcessor(LocalMap<String, String> tempMap, Buffer rawLogLine, Handler<Buffer> bufferHandler) {
+  private void logLineProcessor(Map<String, String> tempMap, Buffer rawLogLine, Handler<Buffer> bufferHandler) {
 
     if (analyzedLogLines.incrementAndGet() % 10000 == 0) {
       System.out.printf("\rSo far analyzed: " + analyzedLogLines.intValue() + " inserted: " + insertedRecords.intValue());
     }
 
     LogLine logLine = gson.fromJson(rawLogLine.toJsonObject().toString(), LogLine.class);
+
+    if(StringUtil.isNullOrEmpty(logLine.id) || StringUtil.isNullOrEmpty(logLine.state) || logLine.timestamp == 0) {
+      LOG.warn("Malformed transaction log in '"+fileName+"' at line " + analyzedLogLines.intValue());
+      return;
+    }
+
     LogLine logInMap = gson.fromJson(tempMap.get(logLine.id), LogLine.class);
     if (null == logInMap) {
       tempMap.put(logLine.id, rawLogLine.toJsonObject().toString());
     } else {
+      if(logInMap.state.equals(logLine.state)) {
+        LOG.warn("Transaction '" + logInMap.id + "' state '" + logInMap.state + "' has been logged at timestamp " + logInMap.timestamp + " and " + logLine.timestamp);
+        return;
+      }
       tempMap.remove(logLine.id);
       //TODO handle error case when both state are the same (wrong log statement in the code)
-      //TODO handle error case when transaction id are not unique
       long delta = Math.abs(logInMap.timestamp - logLine.timestamp);
       String alert = "false";
       if (delta >= threshold) {
@@ -155,16 +166,19 @@ public class MainVerticle extends AbstractVerticle {
     }
   }
 
-  private void closeDown(long started, LocalMap<String, String> tempMap, SQLConnection connection) {
+  private void closeDown(long started, Map<String, String> tempMap, SQLConnection connection) {
     LOG.info("Done inserting to DB");
-    LOG.debug("TempMap size /1: " + tempMap.size());
+    LOG.debug("TempMap size: " + tempMap.size());
+    if(tempMap.size() != 0) {
+      LOG.warn("The following log transaction miss either STARTED or FINISHED:");
+      tempMap.values().stream().forEach(r -> LOG.warn(r.toString()));
+    }
 
     connection.close(done -> {
       LOG.debug("DB Connection closed.");
-      LOG.debug("TempMap size /2: " + tempMap.size());
       LOG.info("Completed in :" + (System.currentTimeMillis() - started));
-      LOG.info("Total rows to DB: " + insertedRecords.getAndIncrement());
-      LOG.info("Total rows analyzed: " + analyzedLogLines.getAndIncrement());
+      LOG.info("Total rows inserted to DB: " + insertedRecords.getAndIncrement());
+      LOG.info("Total rows analyzed in log file: " + analyzedLogLines.getAndIncrement());
       if (done.failed()) {
         LOG.error("Exception while closing the DB connection during the closeDown procedure", done.cause());
         throw new RuntimeException(done.cause());
@@ -182,7 +196,7 @@ public class MainVerticle extends AbstractVerticle {
           LOG.warn("WARNING: Error inserting " + jsonArray.toJsonArray() + ": " + insertResult.cause().getMessage(), insertResult.cause());
           return;
         }
-        LOG.debug("Saved: " + jsonArray.toJsonArray());
+        LOG.debug("Inserted: " + jsonArray.toJsonArray());
         singleConnection.close();
         complete.complete();
       });
@@ -194,6 +208,7 @@ public class MainVerticle extends AbstractVerticle {
    */
   private class LogLine {
     String id;
+    String state;
     String type;
     String host;
     long timestamp;

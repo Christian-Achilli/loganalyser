@@ -1,0 +1,5 @@
+{"id":"", "state":"STARTED", "timestamp":1491377495212}
+{"id":"twice", "state":"", "timestamp":1491377495213}
+{"id":"scsmbstgrc", "state":"FINISHED", "timestamp":1491377495218}
+{"id":"", "state":"", "type":"APPLICATION_LOG","host":"12345", "timestamp":0}
+{"id":"scsmbstgrc", "state":"STARTED", "timestamp":1491377495210}
