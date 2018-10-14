@@ -50,11 +50,13 @@ public class MalformedLogStatement {
 
   @Test
   public void verify_log_statements(TestContext tc) {
-    Async async = tc.async();
-    tc.assertTrue(hasInsertedToDB());
-    tc.assertTrue(hasAnalysedFileRows());
-    tc.assertTrue(hasMalformedWarning());
-    async.complete();
+    vertx.setTimer(1000, t -> {
+      Async async = tc.async();
+      tc.assertTrue(hasInsertedToDB());
+      tc.assertTrue(hasAnalysedFileRows());
+      tc.assertTrue(hasMalformedWarning());
+      async.complete();
+    });
   }
 
   private boolean hasMalformedWarning() {

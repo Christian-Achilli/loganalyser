@@ -18,16 +18,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Use case: Either FINISHED or STARTED state is missing for one of the transaction id.
+ * Use case: the file name specified does not exists
  */
 @RunWith(VertxUnitRunner.class)
-public class MissOneLogStatement {
+public class WrongInputFileName {
 
+  public static final int DELAY = 1000; // this is to allow all log messages to come through
   private Vertx vertx;
   private List<LoggingEvent> stdoutLogEvents;
 
   @Before
-  public void setUp(TestContext tc) {
+  public void setUp(TestContext tc) throws Exception {
     stdoutLogEvents = new ArrayList<>();
     vertx = Vertx.vertx();
     LogManager.getRootLogger().getAppender("stdout").addFilter(new Filter() {
@@ -38,9 +39,9 @@ public class MissOneLogStatement {
       }
     });
     DeploymentOptions options = new DeploymentOptions()
-      .setConfig(new JsonObject().put("file.name", "src/test/resources/missOneLine.log")
+      .setConfig(new JsonObject().put("file.name", "src/main/resources/not_existent.log")
       );
-    vertx.deployVerticle(MainVerticle.class.getName(), options, tc.asyncAssertSuccess());
+    vertx.deployVerticle(MainVerticle.class.getName(), options, tc.asyncAssertFailure());
   }
 
   @After
@@ -50,19 +51,15 @@ public class MissOneLogStatement {
 
   @Test
   public void verify_log_statements(TestContext tc) {
-    vertx.setTimer(1000, t -> {
+    vertx.setTimer(DELAY, t -> {
       Async async = tc.async();
-      tc.assertTrue(hasMissLineWarning());
+      tc.assertTrue(hasWrongFileNameMessage());
       async.complete();
-
     });
   }
 
-  private boolean hasMissLineWarning() {
-    String assertOne = "The following log transaction miss either STARTED or FINISHED:";
-    String assertTwo = "{\"id\":\"missing\",\"state\":\"STARTED\",\"timestamp\":1491377495213}";
-    return stdoutLogEvents.stream().anyMatch(log -> log.getMessage().equals(assertOne))
-      && stdoutLogEvents.stream().anyMatch(log -> log.getMessage().equals(assertTwo));
+  private boolean hasWrongFileNameMessage() {
+    return stdoutLogEvents.stream().anyMatch(log -> log.getMessage().equals("Could not open input file: src/main/resources/not_existent.log"));
   }
 
 

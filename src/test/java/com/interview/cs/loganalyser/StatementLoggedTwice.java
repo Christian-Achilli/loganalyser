@@ -18,10 +18,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Use case: Either FINISHED or STARTED state is missing for one of the transaction id.
+ * Use case: One or more transaction ID appears at least twice with the same state.
  */
 @RunWith(VertxUnitRunner.class)
-public class MissOneLogStatement {
+public class StatementLoggedTwice {
 
   private Vertx vertx;
   private List<LoggingEvent> stdoutLogEvents;
@@ -38,7 +38,7 @@ public class MissOneLogStatement {
       }
     });
     DeploymentOptions options = new DeploymentOptions()
-      .setConfig(new JsonObject().put("file.name", "src/test/resources/missOneLine.log")
+      .setConfig(new JsonObject().put("file.name", "src/test/resources/twiceLogged.log")
       );
     vertx.deployVerticle(MainVerticle.class.getName(), options, tc.asyncAssertSuccess());
   }
@@ -52,18 +52,24 @@ public class MissOneLogStatement {
   public void verify_log_statements(TestContext tc) {
     vertx.setTimer(1000, t -> {
       Async async = tc.async();
-      tc.assertTrue(hasMissLineWarning());
+      tc.assertTrue(hasInsertedToDB());
+      tc.assertTrue(hasAnalysedFileRows());
+      tc.assertTrue(hasTwiceLineWarning());
       async.complete();
-
     });
   }
 
-  private boolean hasMissLineWarning() {
-    String assertOne = "The following log transaction miss either STARTED or FINISHED:";
-    String assertTwo = "{\"id\":\"missing\",\"state\":\"STARTED\",\"timestamp\":1491377495213}";
-    return stdoutLogEvents.stream().anyMatch(log -> log.getMessage().equals(assertOne))
-      && stdoutLogEvents.stream().anyMatch(log -> log.getMessage().equals(assertTwo));
+  private boolean hasTwiceLineWarning() {
+    String assertOne = "Transaction 'twice' state 'STARTED' has been logged at timestamp 1491377495212 and 1491377495213";
+    return stdoutLogEvents.stream().anyMatch(log -> log.getMessage().equals(assertOne));
   }
 
+  private boolean hasAnalysedFileRows() {
+    return stdoutLogEvents.stream().anyMatch(log -> log.getMessage().equals("Total rows analyzed in log file: 5"));
+  }
+
+  private boolean hasInsertedToDB() {
+    return stdoutLogEvents.stream().anyMatch(log -> log.getMessage().equals("Total rows inserted to DB: 1"));
+  }
 
 }

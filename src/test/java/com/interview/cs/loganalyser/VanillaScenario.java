@@ -23,6 +23,7 @@ import java.util.List;
 @RunWith(VertxUnitRunner.class)
 public class VanillaScenario {
 
+  public static final int DELAY = 1000; // this is to allow all log messages to come through
   private Vertx vertx;
   private List<LoggingEvent> stdoutLogEvents;
 
@@ -50,10 +51,12 @@ public class VanillaScenario {
 
   @Test
   public void verify_log_statements(TestContext tc) {
-    Async async = tc.async();
-    tc.assertTrue(hasInsertedToDB());
-    tc.assertTrue(hasAnalysedFileRows());
-    async.complete();
+    vertx.setTimer(DELAY, t -> {
+      Async async = tc.async();
+      tc.assertTrue(hasInsertedToDB());
+      tc.assertTrue(hasAnalysedFileRows());
+      async.complete();
+    });
   }
 
   private boolean hasAnalysedFileRows() {

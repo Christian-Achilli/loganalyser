@@ -28,106 +28,92 @@ public class MainVerticle extends AbstractVerticle {
 
   private static final Logger LOG = Logger.getLogger(MainVerticle.class);
 
-  private long threshold = 4;
-  private JsonObject config = new JsonObject()
+  private static final long threshold = 4;// in ms, if |FINISHED-STARTED| >= threshold then alert
+
+  private JsonObject dbConfig = new JsonObject()
     .put("url", "jdbc:hsqldb:file:db/TESTDB?shutdown=true")
     .put("driver_class", "org.hsqldb.jdbcDriver")
-    .put("max_pool_size", 50)
+    .put("max_pool_size", 50) // tried to find the value that gives better performance
     .put("auto_commit_on_close", true);
-  Gson gson = new Gson();
+
+  private static final Gson GSON = new Gson(); //Json parser
+
   private static final String TABLE_NAME = "LOG_MONITOR";
   private static final String INSERT_RAW_LOG = "INSERT INTO " + TABLE_NAME + " VALUES(?,?,?,?,?)";
   private static final String CREATE_TABLE = "CREATE TEXT TABLE IF NOT EXISTS " + TABLE_NAME + "( id varchar(10), duration bigint, type varchar(50), host varchar(20), alert varchar(10))";
   private static final String SET_TABLE = "SET TABLE " + TABLE_NAME + " SOURCE \"logmonitor;ignore_first=false;all_quoted=true;cache_rows=10000;cache_size=1000\"";
+
   private final AtomicInteger insertedRecords = new AtomicInteger();
   private final AtomicInteger analyzedLogLines = new AtomicInteger();
-  private JDBCClient client;
 
+  private JDBCClient jdbcClient;
   private String fileName;
+  private static final HashMap<String, String> tempMap = new HashMap<>();//used to temporarily store log statements read from file
 
   public MainVerticle() {
     InternalLoggerFactory.setDefaultFactory(Log4JLoggerFactory.INSTANCE); // this is needed to fix a log quirk in netty
-    //input parameters
-
-
-//TODO if you don't delete the previous run the data will be appended to the current DB
   }
 
 
   @Override
   public void start(Future<Void> fut) throws Exception {
+    WelcomeMessage.howTo();
+    retrieveInputFileName();
+    cleanUpDBFiles();
+    long started = System.currentTimeMillis();
+    jdbcClient = JDBCClient.createShared(vertx, dbConfig);
+    jdbcClient.getConnection(conn -> {
+      if (conn.failed()) {
+        LOG.error("FATAL: could not obtain db connection: " + conn.cause().getMessage(), conn.cause());
+        fut.fail(conn.cause());
+        throw new RuntimeException(conn.cause());
+      }
+      final SQLConnection connection = conn.result();
+        connection.execute(CREATE_TABLE, res -> {
+          if (res.failed()) {
+            connection.close();
+            fut.fail(res.cause());
+            throw new RuntimeException(res.cause());
+          } else {
+            connection.execute(SET_TABLE, settable -> { //SET is needed to be able to persist the DB file
+              processInputFile(fut, started, connection);
+            });// end SET table
+          }// else
+        });// end create table
+    });// end get connection
+  }
 
-    LOG.info("************* HOW TO USE THE LOG ANALYSER *******************");
-    LOG.info("The file to be analysed has to be specified in a json config file.");
-    LOG.info("The json config file content is in the format:");
-    LOG.info("{");
-    LOG.info("\t\"file.name\":\"<absolute file path>\"");
-    LOG.info("}");
-    LOG.info("Invoke command: 'java -jar loganalyzer-vertx-1.0-SNAPSHOT-fat.jar -conf <path to conf file>");
-    LOG.info("************************************************************\n");
+  private void processInputFile(Future<Void> fut, long started, SQLConnection connection) {
+    vertx.fileSystem().open(fileName, new OpenOptions().setRead(true).setWrite(false).setCreate(false), inputFileIsOpen -> {
 
+      if(inputFileIsOpen.failed()) {
+        LOG.fatal("Could not open input file: " + fileName, inputFileIsOpen.cause());
+        fut.fail(inputFileIsOpen.cause());
+        throw new RuntimeException(inputFileIsOpen.cause());
+      }
 
-    fileName = config().getString("file.name");
-    LOG.info("File to be analysed: " + fileName);
+      AsyncFile asyncFile = inputFileIsOpen.result();
 
+      asyncFile
+        .handler(logLineProcessor())
+        .endHandler(v -> {
+          asyncFile.close();
+          closeDown(started, tempMap, connection);
+          fut.complete();
+        });///end async file handler
+    });
+  }
+
+  private void cleanUpDBFiles() {
     if (vertx.fileSystem().existsBlocking("db/")) {
       vertx.fileSystem().deleteRecursiveBlocking("db/", true);
       LOG.info("Data from the previous run has been deleted");
     }
+  }
 
-
-    long started = System.currentTimeMillis();
-
-
-    client = JDBCClient.createShared(vertx, config);
-    HashMap<String, String> tempMap = new HashMap<>();//vertx.sharedData().getLocalMap("log-ids");
-
-    RecordParser recordParser = newDelimited("\n",
-      processedLogLine -> logLineProcessor(tempMap, processedLogLine,
-        insertParameters ->
-
-          singleSaveBuffer(insertParameters,
-            Future.future(r -> insertedRecords.incrementAndGet()))));
-
-
-    client.getConnection(conn -> {
-      if (conn.failed()) {
-        LOG.error("FATAL: could not obtain db connection: " + conn.cause().getMessage(), conn.cause());
-        return;
-      }
-      final SQLConnection connection = conn.result();
-
-      connection.execute("COMMIT", commit -> {
-        //create
-        connection.execute(CREATE_TABLE, res -> {
-          if (res.failed()) {
-            connection.close();
-            throw new RuntimeException(res.cause());
-          } else {
-            connection.execute(SET_TABLE, settable -> {
-
-              vertx.fileSystem().open(fileName, new OpenOptions().setRead(true).setWrite(false).setCreate(false), inputFileIsOpen -> {
-
-                if(inputFileIsOpen.failed()) {
-                  LOG.fatal("Could not open input file: " + fileName, inputFileIsOpen.cause());
-                }
-
-                AsyncFile asyncFile = inputFileIsOpen.result();
-
-                asyncFile
-                  .handler(recordParser)
-                  .endHandler(v -> {
-                    asyncFile.close();
-                    closeDown(started, tempMap, connection);
-                    fut.complete();
-                  });///end async file handler
-              });
-
-            });// end SET table
-          }// else
-        });// end create table
-      }); //end commit
-    });// end get connection
+  private void retrieveInputFileName() {
+    fileName = config().getString("file.name");
+    LOG.info("File to be analysed: " + fileName);
   }
 
   private void logLineProcessor(Map<String, String> tempMap, Buffer rawLogLine, Handler<Buffer> bufferHandler) {
@@ -135,15 +121,12 @@ public class MainVerticle extends AbstractVerticle {
     if (analyzedLogLines.incrementAndGet() % 10000 == 0) {
       System.out.printf("\rSo far analyzed: " + analyzedLogLines.intValue() + " inserted: " + insertedRecords.intValue());
     }
-
-    LogLine logLine = gson.fromJson(rawLogLine.toJsonObject().toString(), LogLine.class);
-
+    LogLine logLine = GSON.fromJson(rawLogLine.toJsonObject().toString(), LogLine.class);
     if(StringUtil.isNullOrEmpty(logLine.id) || StringUtil.isNullOrEmpty(logLine.state) || logLine.timestamp == 0) {
       LOG.warn("Malformed transaction log in '"+fileName+"' at line " + analyzedLogLines.intValue());
       return;
     }
-
-    LogLine logInMap = gson.fromJson(tempMap.get(logLine.id), LogLine.class);
+    LogLine logInMap = GSON.fromJson(tempMap.get(logLine.id), LogLine.class);
     if (null == logInMap) {
       tempMap.put(logLine.id, rawLogLine.toJsonObject().toString());
     } else {
@@ -158,14 +141,12 @@ public class MainVerticle extends AbstractVerticle {
       if (delta >= threshold) {
         alert = "true";
       }
-
       JsonArray params = new JsonArray()
         .add(logLine.id)
         .add(delta)
         .add(logLine.type == null ? "" : logLine.type)
         .add(logLine.host == null ? "" : logLine.host)
         .add(alert);
-
       bufferHandler.handle(new Buffer(params.toBuffer()));
     }
   }
@@ -175,7 +156,7 @@ public class MainVerticle extends AbstractVerticle {
     LOG.debug("TempMap size: " + tempMap.size());
     if(tempMap.size() != 0) {
       LOG.warn("The following log transaction miss either STARTED or FINISHED:");
-      tempMap.values().stream().forEach(r -> LOG.warn(r.toString()));
+      tempMap.values().stream().forEach(r -> LOG.warn(r));
     }
 
     connection.close(done -> {
@@ -193,7 +174,7 @@ public class MainVerticle extends AbstractVerticle {
 
   private void singleSaveBuffer(Buffer jsonArray, Future complete) {
 
-    client.getConnection(connection -> {
+    jdbcClient.getConnection(connection -> {
       SQLConnection singleConnection = connection.result();
       singleConnection.queryWithParams(INSERT_RAW_LOG, jsonArray.toJsonArray(), insertResult -> {
         if (insertResult.failed()) {
@@ -216,7 +197,17 @@ public class MainVerticle extends AbstractVerticle {
     String type;
     String host;
     long timestamp;
+  }
 
+  /**
+   * Describe the chain of events from the log being read from input till saved to DB once both state are found
+   * @return a RecordParser with the logic to process a log statement and update the DB
+   */
+  private RecordParser logLineProcessor() {
+    return newDelimited("\n",
+      processedLogLine -> logLineProcessor(tempMap, processedLogLine,
+        insertParameters -> singleSaveBuffer(insertParameters,
+          Future.future(r -> insertedRecords.incrementAndGet()))));
   }
 
 }
