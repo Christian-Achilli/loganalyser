@@ -55,7 +55,7 @@ public class MainVerticle extends AbstractVerticle {
 
 
   @Override
-  public void start(Future<Void> fut) {
+  public void start(Future<Void> fut) throws Exception {
 
     LOG.info("************* HOW TO USE THE LOG ANALYSER *******************");
     LOG.info("The file to be analysed has to be specified in a json config file.");
