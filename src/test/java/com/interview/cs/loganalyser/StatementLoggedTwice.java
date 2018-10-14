@@ -40,7 +40,7 @@ public class StatementLoggedTwice {
     DeploymentOptions options = new DeploymentOptions()
       .setConfig(new JsonObject().put("file.name", "src/test/resources/twiceLogged.log")
       );
-    vertx.deployVerticle(MainVerticle.class.getName(), options, tc.asyncAssertSuccess());
+    vertx.deployVerticle(LogFileProcessor.class.getName(), options, tc.asyncAssertSuccess());
   }
 
   @After

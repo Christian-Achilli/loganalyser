@@ -1,7 +1,7 @@
 buildscript {
   ext {
     vertxVersion = '3.5.4'
-    mainVerticleName = 'com.interview.cs.loganalyser.MainVerticle'
+    mainVerticleName = 'com.interview.cs.loganalyser.LogFileProcessor'
     watchForChange = 'src/**/*'
     doOnChange = './gradlew classes'
   }
