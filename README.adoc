@@ -1,89 +1,78 @@
-= Vert.x Gradle Starter
+= Loganalyser
+This project uses a reactive toolkit technology called Vertx (vertx.io) to define
+a chain of events needed to process a possibly large (GB) log file.
 
-This project is a template to start your own Vert.x project using Gradle.
+Each step of the process executes independently from the other, in a sort of reactive pattern.
+
+Vertx allows to easily define a reactive pattern architecture and takes care to optimise
+the usage of the undelying hardware to maximise performances.
 
 == Prerequisites
 
 * JDK 8+
 
-== Getting started
 
-Create your project with:
+== Build the Artifact
 
-[source]
-----
-git clone https://github.com/vert-x3/vertx-gradle-starter.git PROJECT_NAME
-----
+Checkout the project using Github.
 
-Replace `PROJECT_NAME` with the name of your project.
+To run the project it is necessary to build a fat jar.
 
-On Linux and MacOSx (or Windows with `bash`), if you want to go faster and generate an already configured project run:
+To build the fat-jar use the Gradle command:
 
 [source]
 ----
-curl http://vertx.io/assets/starter-scripts/create-vertx-project-gradle.sh -o vertx-create-gradle-project.sh; bash vertx-create-gradle-project.sh
+./gradlew build
 ----
+
+The above command will generate the fat jar in the folder build/libs.
+
+== Configuring the application (mandatory)
+
+To run, the fat jar needs to know the location of the log file that needs to be processed.
+
+To pass the log file location to the fat jar, create a file named, for instance, `app.conf`.
+Inside `app.conf` write:
+[source]
+----
+{
+  "file.name": "<absolute path of the log file>"
+}
+----
+
+An example of the configuration file is available in the source code at `src/main/conf/application.conf`
+
 
 == Running the project
 
-Once you have retrieved the project, you can check that everything works with:
+Once you have created the configuration file and built the artifact, you are ready to go.
 
-[source]
-----
-./gradlew test run
-----
+Use: `java -jar <path to the fat-jar>/fat-jar-name.jar -conf <path to the conf file>/app.conf`
 
-The command compiles the project and runs the tests, then  it launches the application, so you can check by yourself. Open your browser to http://localhost:8080. You should see a _Hello World_ message.
+You will see logs get printed to the console. A counter informs the process progress every 100000
+records are read from the input file.
 
-== Anatomy of the project
+Other logs are available in the `logs/` folder.
+The `HSQLDB` is stored in the folder `db/` and the table data is in the file `db/logmonitor`
 
-The project contains:
+Both `logs/` and `db/` are generated in the folder from where you are running the `java -jar` command.
 
-* the Gradle project and its configuration (`build.gradle`)
-* a _main_ verticle file (src/main/java/io/vertx/starter/MainVerticle.java)
-* a unit test (src/main/test/io/vertx/starter/MainVerticleTest.java)
+NB: the `db/` folder is deleted and recreated at every run.
 
-== Start to hack
+=== Additional Points
 
-1. Delete the `.git` directory
-2. Open the `build.gradle` file and customize the `version`. You can also change the `mainVerticleName` variable to use your own package name and verticle class.
-3. Run `./gradlew run`.
+This software was developed and tested on Mac OS using Intellij and Gradle.
 
-This last command relaunches Gradle and the application as soon as you change something in `src/main`.
+Logs can be configured in the `src/main/resources/log4j.properties` file.
+After changing the log properties the `fat-jar` has to be rebuilt.
 
-== Building the project
+The paradigm using for this software is closer to functional programming rather than object oriented.
+Separation of concerns and best practices for readable and maintainable code have been applied.
 
-To build the project, just use:
+Unit tests have been developed and the total line coverage is 92%.
+The unit tests implemented represents more system tests rather than test of single unit of work.
 
-----
-./gradlew shadowJar
-----
+Low level multi-threading was not considered a good option becasue of the complexity that comes with it.
+Instead, it was chose to use a reactive toolkit like Vertx that allows great performances without having to worry of managing several threads, as this is done by the toolkit.
 
-It generates a _fat-jar_ in the `build/libs` directory.
-
-
-
-
------------
-This project shows how to use the Vert.x 3.2 redeploy feature. Vert.x watches for file changes and will then compile these changes. The hello world verticle will be redeployed automatically.
-Simply start the application with:
-
-    ./gradlew run
-
-Now point your browser at http://localhost:8080. Then you can make changes to the hello world verticle and reload the browser.
-
-The whole configuration for this is rather simple:
-
-    mainClassName = 'io.vertx.core.Launcher'
-    def mainVerticleName = 'io.vertx.example.HelloWorldVerticle'
-
-    // Vert.x watches for file changes in all subdirectories
-    // of src/ but only for files with .java extension
-    def watchForChange = 'src/**/*.java'
-
-    // Vert.x will call this task on changes
-    def doOnChange = './gradlew classes'
-
-    run {
-        args = ['run', mainVerticleName, "--redeploy=$watchForChange", "--launcher-class=$mainClassName", "--on-redeploy=$doOnChange"]
-    }
+This application has been tested up until 1.2GB size input files and took about 450 seconds to complete.

@@ -41,7 +41,7 @@ public class WrongInputFileName {
     DeploymentOptions options = new DeploymentOptions()
       .setConfig(new JsonObject().put("file.name", "src/main/resources/not_existent.log")
       );
-    vertx.deployVerticle(MainVerticle.class.getName(), options, tc.asyncAssertFailure());
+    vertx.deployVerticle(LogFileProcessor.class.getName(), options, tc.asyncAssertFailure());
   }
 
   @After

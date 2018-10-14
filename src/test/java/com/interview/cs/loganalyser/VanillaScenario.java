@@ -41,7 +41,7 @@ public class VanillaScenario {
     DeploymentOptions options = new DeploymentOptions()
       .setConfig(new JsonObject().put("file.name", "src/main/resources/smallsample.log")
       );
-    vertx.deployVerticle(MainVerticle.class.getName(), options, tc.asyncAssertSuccess());
+    vertx.deployVerticle(LogFileProcessor.class.getName(), options, tc.asyncAssertSuccess());
   }
 
   @After
