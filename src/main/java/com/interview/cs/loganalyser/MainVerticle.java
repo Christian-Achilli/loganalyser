@@ -91,38 +91,33 @@ public class MainVerticle extends AbstractVerticle {
         return;
       }
       final SQLConnection connection = conn.result();
-      //drop
-      connection.execute("TRUNCATE TABLE " + TABLE_NAME, truncate -> {
-        if (truncate.failed()) {
-          System.err.println(truncate.cause());
-        }
-        connection.execute("COMMIT", commit -> {
-          //create
-          connection.execute(CREATE_TABLE, res -> {
-            if (res.failed()) {
-              connection.close();
-              throw new RuntimeException(res.cause());
-            } else {
-              connection.execute(SET_TABLE, settable -> {
 
-                vertx.fileSystem().open(fileName, new OpenOptions().setRead(true).setWrite(false).setCreate(false), inputFileIsOpen -> {
+      connection.execute("COMMIT", commit -> {
+        //create
+        connection.execute(CREATE_TABLE, res -> {
+          if (res.failed()) {
+            connection.close();
+            throw new RuntimeException(res.cause());
+          } else {
+            connection.execute(SET_TABLE, settable -> {
 
-                  AsyncFile asyncFile = inputFileIsOpen.result();
+              vertx.fileSystem().open(fileName, new OpenOptions().setRead(true).setWrite(false).setCreate(false), inputFileIsOpen -> {
 
-                  asyncFile
-                    .handler(recordParser)
-                    .endHandler(v -> {
-                      asyncFile.close();
-                      closeDown(started, tempMap, connection);
-                      fut.complete();
-                    });///end async file handler
-                });
+                AsyncFile asyncFile = inputFileIsOpen.result();
 
-              });// end SET table
-            }// else
-          });// end create table
-        }); //end commit
-      });// end drop table
+                asyncFile
+                  .handler(recordParser)
+                  .endHandler(v -> {
+                    asyncFile.close();
+                    closeDown(started, tempMap, connection);
+                    fut.complete();
+                  });///end async file handler
+              });
+
+            });// end SET table
+          }// else
+        });// end create table
+      }); //end commit
     });// end get connection
   }
 
