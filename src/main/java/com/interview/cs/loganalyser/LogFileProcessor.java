@@ -60,7 +60,11 @@ public class LogFileProcessor extends AbstractVerticle {
     InternalLoggerFactory.setDefaultFactory(Log4JLoggerFactory.INSTANCE); // this is needed to fix a log quirk in netty
   }
 
-
+  /**
+   * This is the like the main method. It is invoked by the Vertx engine when the verticle is deployed.
+   * @param fut Used to let know the verticle completed its deployment.
+   * @throws Exception
+   */
   @Override
   public void start(Future<Void> fut) throws Exception {
     WelcomeMessage.howTo();
@@ -76,12 +80,12 @@ public class LogFileProcessor extends AbstractVerticle {
       }
       final SQLConnection connection = conn.result();
       connection.execute(CREATE_TABLE, res -> {
-        connection.close();
         if (res.failed()) {
           fut.fail(res.cause());
           throw new RuntimeException(res.cause());
         } else {
           connection.execute(SET_TABLE, settable -> { //SET is needed to be able to persist the DB file
+            connection.close();
             processInputFile(fut);
           });// end SET table
         }// else
@@ -92,7 +96,7 @@ public class LogFileProcessor extends AbstractVerticle {
   /**
    * Reads the input file line by line and delegates the processing of each record
    *
-   * @param fut        to let the verticle know the batch has terminated
+   * @param fut to let the verticle know the batch has terminated
    */
   private void processInputFile(Future<Void> fut) {
     vertx.fileSystem().open(fileName, new OpenOptions().setRead(true).setWrite(false).setCreate(false), inputFileIsOpen -> {
@@ -113,6 +117,9 @@ public class LogFileProcessor extends AbstractVerticle {
     });
   }
 
+  /**
+   * Deletes the DB folder
+   */
   private void cleanUpDBFiles() {
     if (vertx.fileSystem().existsBlocking(DB_FOLDER)) {
       vertx.fileSystem().deleteRecursiveBlocking(DB_FOLDER, true);
@@ -120,13 +127,21 @@ public class LogFileProcessor extends AbstractVerticle {
     }
   }
 
+  /**
+   * Retrieves the input file name from the configuration file
+   */
   private void retrieveInputFileName() {
     fileName = config().getString("file.name");
     LOG.info("File to be analysed: " + fileName);
   }
 
+  /**
+   * Receives a line of log and either find the duration of the log transaction, raise errors or stores the
+   * log information if tha log transaction is met for the first time.
+   * @param rawLogLine the json line form the log file
+   * @param bufferHandler to pass the duration information and other metadata over to the next step
+   */
   private void logLineProcessor(Buffer rawLogLine, Handler<Buffer> bufferHandler) {
-
     if (analyzedLogLines.incrementAndGet() % RATE_OF_LOGGING == 0) {
       System.out.printf("\rSo far analyzed: " + analyzedLogLines.intValue() + " inserted: " + insertedRecords.intValue());
     }
