@@ -1,30 +1,43 @@
+buildscript {
+  ext {
+    vertxVersion = '3.5.4'
+    mainVerticleName = 'com.interview.cs.loganalyser.MainVerticle'
+    watchForChange = 'src/**/*'
+    doOnChange = './gradlew classes'
+  }
+
+}
+
+
 plugins {
+  id 'java'
   id 'application'
   id 'com.github.johnrengelman.shadow' version '2.0.2'
 }
 
 repositories {
   jcenter()
+  mavenCentral()
 }
 
+group = 'com.interview.cs.loganalyser'
 version = '1.0-SNAPSHOT'
 sourceCompatibility = '1.8'
 mainClassName = 'io.vertx.core.Launcher'
 
-def vertxVersion = '3.5.4'
-def mainVerticleName = 'com.interview.cs.loganalyser.MainVerticle'
-def watchForChange = 'src/**/*'
-def doOnChange = './gradlew classes'
+
 
 dependencies {
+  implementation "io.vertx:vertx-rx-java:$vertxVersion"
   implementation "io.vertx:vertx-core:$vertxVersion"
   implementation "io.vertx:vertx-jdbc-client:$vertxVersion"
   implementation "io.vertx:vertx-sql-common:$vertxVersion"
   implementation "io.vertx:vertx-reactive-streams:$vertxVersion"
-  implementation "org.hsqldb:hsqldb:2.4.1"
+  runtimeOnly "org.hsqldb:hsqldb:2.4.1"
   implementation "com.google.code.gson:gson:2.8.5"
   testImplementation "junit:junit:4.12"
   testImplementation "io.vertx:vertx-unit:$vertxVersion"
+  implementation group: 'log4j', name: 'log4j', version: '1.2.16'
 }
 
 shadowJar {
@@ -38,9 +51,7 @@ shadowJar {
 }
 
 run {
-  args = ['run', mainVerticleName, "--redeploy=$watchForChange", "--launcher-class=$mainClassName", "--on-redeploy=$doOnChange"]
+  args = ['run', mainVerticleName, "-conf src/main/conf/application.conf" , "--redeploy=$watchForChange", "--launcher-class=$mainClassName", "--on-redeploy=$doOnChange"]
 }
 
-task wrapper(type: Wrapper) {
-  gradleVersion = '4.5.1'
-}
+

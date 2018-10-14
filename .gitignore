@@ -22,3 +22,8 @@ gradle-app.setting
 /.settings/
 /.vertx/
 /.vscode/
+/db/
+/loganalyser.log*
+.DS_STORE
+/out/
+/logs/
