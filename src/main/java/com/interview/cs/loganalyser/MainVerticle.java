@@ -44,18 +44,10 @@ public class MainVerticle extends AbstractVerticle {
   private String fileName;
 
   public MainVerticle() {
-    InternalLoggerFactory.setDefaultFactory(Log4JLoggerFactory.INSTANCE);
+    InternalLoggerFactory.setDefaultFactory(Log4JLoggerFactory.INSTANCE); // this is needed to fix a log quirk in netty
     //input parameters
 
 
-
-/*    System.out.println("Hello and welcome. \n Please execute this application from the folder where the log file is.");
-    System.out.println("Please insert the name of the file:");
-    Scanner scanner = new Scanner(System.in);
-    fileName = scanner.nextLine();
-    System.out.println("Your file name is " + fileName);*/
-
-    //
 //TODO if you don't delete the previous run the data will be appended to the current DB
   }
 
@@ -63,11 +55,22 @@ public class MainVerticle extends AbstractVerticle {
   @Override
   public void start(Future<Void> fut) {
 
-    fileName = "/Users/chrisachilli/creditsuisse/bigsample.log";//config().getString("file.name");
-    System.out.println("------->>>>>>> " + fileName);
+    LOG.info("********************************");
+    LOG.info("The file to be analysed has to be written in a json config file.");
+    LOG.info("The json config file content is in the format:");
+    LOG.info("{");
+    LOG.info("\t\"file.name\":\"<absolute file path>\"");
+    LOG.info("}");
+    LOG.info("Invoke command: 'java -jar loganalyzer-vertx-1.0-SNAPSHOT-fat.jar -conf <path to conf file>");
+    LOG.info("********************************\n");
+
+
+    fileName = config().getString("file.name");
+    LOG.info("File to be analysed: " + fileName);
 
     if (vertx.fileSystem().existsBlocking("db/")) {
       vertx.fileSystem().deleteRecursiveBlocking("db/", true);
+      LOG.info("Data from the previous run has been deleted");
     }
 
 
@@ -124,7 +127,6 @@ public class MainVerticle extends AbstractVerticle {
   private void logLineProcessor(LocalMap<String, String> tempMap, Buffer rawLogLine, Handler<Buffer> bufferHandler) {
 
     if (analyzedLogLines.incrementAndGet() % 10000 == 0) {
-      //LOG.info("So far analyzed: " +analyzedLogLines.intValue());
       System.out.printf("\rSo far analyzed: " + analyzedLogLines.intValue() + " inserted: " + insertedRecords.intValue());
     }
 
