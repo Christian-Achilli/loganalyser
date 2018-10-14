@@ -55,14 +55,14 @@ public class MainVerticle extends AbstractVerticle {
   @Override
   public void start(Future<Void> fut) {
 
-    LOG.info("********************************");
-    LOG.info("The file to be analysed has to be written in a json config file.");
+    LOG.info("************* HOW TO USE THE LOG ANALYSER *******************");
+    LOG.info("The file to be analysed has to be specified in a json config file.");
     LOG.info("The json config file content is in the format:");
     LOG.info("{");
     LOG.info("\t\"file.name\":\"<absolute file path>\"");
     LOG.info("}");
     LOG.info("Invoke command: 'java -jar loganalyzer-vertx-1.0-SNAPSHOT-fat.jar -conf <path to conf file>");
-    LOG.info("********************************\n");
+    LOG.info("************************************************************\n");
 
 
     fileName = config().getString("file.name");
