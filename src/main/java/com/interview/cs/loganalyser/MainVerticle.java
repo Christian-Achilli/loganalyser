@@ -7,8 +7,6 @@ import io.vertx.core.Handler;
 import io.vertx.core.file.OpenOptions;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
-import io.vertx.core.logging.Logger;
-import io.vertx.core.logging.LoggerFactory;
 import io.vertx.rxjava.core.AbstractVerticle;
 import io.vertx.rxjava.core.buffer.Buffer;
 import io.vertx.rxjava.core.file.AsyncFile;
@@ -16,6 +14,8 @@ import io.vertx.rxjava.core.parsetools.RecordParser;
 import io.vertx.rxjava.core.shareddata.LocalMap;
 import io.vertx.rxjava.ext.jdbc.JDBCClient;
 import io.vertx.rxjava.ext.sql.SQLConnection;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -23,8 +23,7 @@ import static io.vertx.rxjava.core.parsetools.RecordParser.newDelimited;
 
 public class MainVerticle extends AbstractVerticle {
 
-  private static final Logger LOG = LoggerFactory.getLogger(MainVerticle.class);
-
+  private static final Logger LOG = LogManager.getLogger(MainVerticle.class);
 
   private long threshold = 4;
   private JsonObject config = new JsonObject()
@@ -63,30 +62,31 @@ public class MainVerticle extends AbstractVerticle {
   @Override
   public void start(Future<Void> fut) {
 
-    fileName = config().getString("file.name");
-    System.out.println("------->>>>>>> "+fileName);
+    fileName = "/Users/chrisachilli/creditsuisse/bigsample.log";//config().getString("file.name");
+    System.out.println("------->>>>>>> " + fileName);
 
-    if(vertx.fileSystem().existsBlocking("db/")) {
+    if (vertx.fileSystem().existsBlocking("db/")) {
       vertx.fileSystem().deleteRecursiveBlocking("db/", true);
     }
 
 
     long started = System.currentTimeMillis();
 
-    AsyncFile asyncFile = vertx.fileSystem().openBlocking(fileName, new OpenOptions().setRead(true).setWrite(false).setCreate(false));
 
     client = JDBCClient.createShared(vertx, config);
     LocalMap<String, String> tempMap = vertx.sharedData().getLocalMap("log-ids");
 
     RecordParser recordParser = newDelimited("\n",
       processedLogLine -> logLineProcessor(tempMap, processedLogLine,
-        insertParameters -> singleSaveBuffer(insertParameters,
-          Future.future(r -> insertedRecords.incrementAndGet()))));
+        insertParameters ->
+
+          singleSaveBuffer(insertParameters,
+            Future.future(r -> insertedRecords.incrementAndGet()))));
 
 
     client.getConnection(conn -> {
       if (conn.failed()) {
-        LOG.error("FATAL: could not obtain db connection: "+conn.cause().getMessage(), conn.cause());
+        LOG.error("FATAL: could not obtain db connection: " + conn.cause().getMessage(), conn.cause());
         return;
       }
       final SQLConnection connection = conn.result();
@@ -103,13 +103,20 @@ public class MainVerticle extends AbstractVerticle {
               throw new RuntimeException(res.cause());
             } else {
               connection.execute(SET_TABLE, settable -> {
-                asyncFile
-                  .handler(recordParser)
-                  .endHandler(v -> {
-                    asyncFile.close();
-                    closeDown(started, tempMap, connection);
-                    fut.complete();
-                  });//end async file handler
+
+                vertx.fileSystem().open(fileName, new OpenOptions().setRead(true).setWrite(false).setCreate(false), inputFileIsOpen -> {
+
+                  AsyncFile asyncFile = inputFileIsOpen.result();
+
+                  asyncFile
+                    .handler(recordParser)
+                    .endHandler(v -> {
+                      asyncFile.close();
+                      closeDown(started, tempMap, connection);
+                      fut.complete();
+                    });///end async file handler
+                });
+
               });// end SET table
             }// else
           });// end create table
@@ -121,7 +128,8 @@ public class MainVerticle extends AbstractVerticle {
   private void logLineProcessor(LocalMap<String, String> tempMap, Buffer rawLogLine, Handler<Buffer> bufferHandler) {
 
     if (analyzedLogLines.incrementAndGet() % 10000 == 0) {
-      LOG.info("So far analyzed: " +analyzedLogLines.intValue());
+      //LOG.info("So far analyzed: " +analyzedLogLines.intValue());
+      System.out.printf("\rSo far analyzed: " + analyzedLogLines.intValue() + " inserted: " + insertedRecords.intValue());
     }
 
     LogLine logLine = gson.fromJson(rawLogLine.toJsonObject().toString(), LogLine.class);
