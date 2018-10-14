@@ -69,24 +69,24 @@ public class MainVerticle extends AbstractVerticle {
         throw new RuntimeException(conn.cause());
       }
       final SQLConnection connection = conn.result();
-        connection.execute(CREATE_TABLE, res -> {
-          if (res.failed()) {
-            connection.close();
-            fut.fail(res.cause());
-            throw new RuntimeException(res.cause());
-          } else {
-            connection.execute(SET_TABLE, settable -> { //SET is needed to be able to persist the DB file
-              processInputFile(fut, started, connection);
-            });// end SET table
-          }// else
-        });// end create table
+      connection.execute(CREATE_TABLE, res -> {
+        if (res.failed()) {
+          connection.close();
+          fut.fail(res.cause());
+          throw new RuntimeException(res.cause());
+        } else {
+          connection.execute(SET_TABLE, settable -> { //SET is needed to be able to persist the DB file
+            processInputFile(fut, started, connection);
+          });// end SET table
+        }// else
+      });// end create table
     });// end get connection
   }
 
   private void processInputFile(Future<Void> fut, long started, SQLConnection connection) {
     vertx.fileSystem().open(fileName, new OpenOptions().setRead(true).setWrite(false).setCreate(false), inputFileIsOpen -> {
 
-      if(inputFileIsOpen.failed()) {
+      if (inputFileIsOpen.failed()) {
         LOG.fatal("Could not open input file: " + fileName, inputFileIsOpen.cause());
         fut.fail(inputFileIsOpen.cause());
         throw new RuntimeException(inputFileIsOpen.cause());
@@ -100,6 +100,7 @@ public class MainVerticle extends AbstractVerticle {
           asyncFile.close();
           closeDown(started, tempMap, connection);
           fut.complete();
+          vertx.close();
         });///end async file handler
     });
   }
@@ -122,15 +123,15 @@ public class MainVerticle extends AbstractVerticle {
       System.out.printf("\rSo far analyzed: " + analyzedLogLines.intValue() + " inserted: " + insertedRecords.intValue());
     }
     LogLine logLine = GSON.fromJson(rawLogLine.toJsonObject().toString(), LogLine.class);
-    if(StringUtil.isNullOrEmpty(logLine.id) || StringUtil.isNullOrEmpty(logLine.state) || logLine.timestamp == 0) {
-      LOG.warn("Malformed transaction log in '"+fileName+"' at line " + analyzedLogLines.intValue());
+    if (StringUtil.isNullOrEmpty(logLine.id) || StringUtil.isNullOrEmpty(logLine.state) || logLine.timestamp == 0) {
+      LOG.warn("Malformed transaction log in '" + fileName + "' at line " + analyzedLogLines.intValue());
       return;
     }
     LogLine logInMap = GSON.fromJson(tempMap.get(logLine.id), LogLine.class);
     if (null == logInMap) {
       tempMap.put(logLine.id, rawLogLine.toJsonObject().toString());
     } else {
-      if(logInMap.state.equals(logLine.state)) {
+      if (logInMap.state.equals(logLine.state)) {
         LOG.warn("Transaction '" + logInMap.id + "' state '" + logInMap.state + "' has been logged at timestamp " + logInMap.timestamp + " and " + logLine.timestamp);
         return;
       }
@@ -154,7 +155,7 @@ public class MainVerticle extends AbstractVerticle {
   private void closeDown(long started, Map<String, String> tempMap, SQLConnection connection) {
     LOG.info("Done inserting to DB");
     LOG.debug("TempMap size: " + tempMap.size());
-    if(tempMap.size() != 0) {
+    if (tempMap.size() != 0) {
       LOG.warn("The following log transaction miss either STARTED or FINISHED:");
       tempMap.values().stream().forEach(r -> LOG.warn(r));
     }
@@ -201,6 +202,7 @@ public class MainVerticle extends AbstractVerticle {
 
   /**
    * Describe the chain of events from the log being read from input till saved to DB once both state are found
+   *
    * @return a RecordParser with the logic to process a log statement and update the DB
    */
   private RecordParser logLineProcessor() {
