@@ -2,6 +2,8 @@ package com.interview.cs.loganalyser;
 
 
 import com.google.gson.Gson;
+import io.netty.util.internal.logging.InternalLoggerFactory;
+import io.netty.util.internal.logging.Log4JLoggerFactory;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.file.OpenOptions;
@@ -14,8 +16,7 @@ import io.vertx.rxjava.core.parsetools.RecordParser;
 import io.vertx.rxjava.core.shareddata.LocalMap;
 import io.vertx.rxjava.ext.jdbc.JDBCClient;
 import io.vertx.rxjava.ext.sql.SQLConnection;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.apache.log4j.Logger;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -23,7 +24,7 @@ import static io.vertx.rxjava.core.parsetools.RecordParser.newDelimited;
 
 public class MainVerticle extends AbstractVerticle {
 
-  private static final Logger LOG = LogManager.getLogger(MainVerticle.class);
+  private static final Logger LOG = Logger.getLogger(MainVerticle.class);
 
   private long threshold = 4;
   private JsonObject config = new JsonObject()
@@ -43,7 +44,7 @@ public class MainVerticle extends AbstractVerticle {
   private String fileName;
 
   public MainVerticle() {
-    //InternalLoggerFactory.setDefaultFactory(Log4JLoggerFactory.INSTANCE);
+    InternalLoggerFactory.setDefaultFactory(Log4JLoggerFactory.INSTANCE);
     //input parameters
 
 
