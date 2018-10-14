@@ -1,0 +1,78 @@
+= Loganalyser
+This project uses a reactive toolkit technology called Vertx (vertx.io) to define
+a chain of events needed to process a possibly large (GB) log file.
+
+Each step of the process executes independently from the other, in a sort of reactive pattern.
+
+Vertx allows to easily define a reactive pattern architecture and takes care to optimise
+the usage of the undelying hardware to maximise performances.
+
+== Prerequisites
+
+* JDK 8+
+
+
+== Build the Artifact
+
+Checkout the project using Github.
+
+To run the project it is necessary to build a fat jar.
+
+To build the fat-jar use the Gradle command:
+
+[source]
+----
+./gradlew build
+----
+
+The above command will generate the fat jar in the folder build/libs.
+
+== Configuring the application (mandatory)
+
+To run, the fat jar needs to know the location of the log file that needs to be processed.
+
+To pass the log file location to the fat jar, create a file named, for instance, `app.conf`.
+Inside `app.conf` write:
+[source]
+----
+{
+  "file.name": "<absolute path of the log file>"
+}
+----
+
+An example of the configuration file is available in the source code at `src/main/conf/application.conf`
+
+
+== Running the project
+
+Once you have created the configuration file and built the artifact, you are ready to go.
+
+Use: `java -jar <path to the fat-jar>/fat-jar-name.jar -conf <path to the conf file>/app.conf`
+
+You will see logs get printed to the console. A counter informs the process progress every 100000
+records are read from the input file.
+
+Other logs are available in the `logs/` folder.
+The `HSQLDB` is stored in the folder `db/` and the table data is in the file `db/logmonitor`
+
+Both `logs/` and `db/` are generated in the folder from where you are running the `java -jar` command.
+
+NB: the `db/` folder is deleted and recreated at every run.
+
+=== Additional Points
+
+This software was developed and tested on Mac OS using Intellij and Gradle.
+
+Logs can be configured in the `src/main/resources/log4j.properties` file.
+After changing the log properties the `fat-jar` has to be rebuilt.
+
+The paradigm using for this software is closer to functional programming rather than object oriented.
+Separation of concerns and best practices for readable and maintainable code have been applied.
+
+Unit tests have been developed and the total line coverage is 92%.
+The unit tests implemented represents more system tests rather than test of single unit of work.
+
+Low level multi-threading was not considered a good option becasue of the complexity that comes with it.
+Instead, it was chose to use a reactive toolkit like Vertx that allows great performances without having to worry of managing several threads, as this is done by the toolkit.
+
+This application has been tested up until 1.2GB size input files and took about 450 seconds to complete.
