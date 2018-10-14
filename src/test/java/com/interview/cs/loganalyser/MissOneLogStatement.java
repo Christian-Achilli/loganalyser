@@ -18,10 +18,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Use case: the log file is well formed.
+ * Use case: One or more of the log statements either miss ID, STATE, TIMESTAMP or all of those.
  */
 @RunWith(VertxUnitRunner.class)
-public class VanillaScenario {
+public class MissOneLogStatement {
 
   private Vertx vertx;
   private List<LoggingEvent> stdoutLogEvents;
@@ -38,7 +38,7 @@ public class VanillaScenario {
       }
     });
     DeploymentOptions options = new DeploymentOptions()
-      .setConfig(new JsonObject().put("file.name", "src/main/resources/smallsample.log")
+      .setConfig(new JsonObject().put("file.name", "src/test/resources/missOneLine.log")
       );
     vertx.deployVerticle(MainVerticle.class.getName(), options, tc.asyncAssertSuccess());
   }
@@ -53,15 +53,23 @@ public class VanillaScenario {
     Async async = tc.async();
     tc.assertTrue(hasInsertedToDB());
     tc.assertTrue(hasAnalysedFileRows());
+    tc.assertTrue(hasMissLineWarning());
     async.complete();
   }
 
+  private boolean hasMissLineWarning() {
+    String assertOne = "The following log transaction miss either STARTED or FINISHED:";
+    String assertTwo = "{\"id\":\"missing\",\"state\":\"STARTED\",\"timestamp\":1491377495213}";
+    return stdoutLogEvents.stream().anyMatch(log -> log.getMessage().equals(assertOne))
+      && stdoutLogEvents.stream().anyMatch(log -> log.getMessage().equals(assertTwo));
+  }
+
   private boolean hasAnalysedFileRows() {
-    return stdoutLogEvents.stream().anyMatch(log -> log.getMessage().equals("Total rows analyzed in log file: 6"));
+    return stdoutLogEvents.stream().anyMatch(log -> log.getMessage().equals("Total rows analyzed in log file: 5"));
   }
 
   private boolean hasInsertedToDB() {
-    return stdoutLogEvents.stream().anyMatch(log -> log.getMessage().equals("Total rows inserted to DB: 3"));
+    return stdoutLogEvents.stream().anyMatch(log -> log.getMessage().equals("Total rows inserted to DB: 2"));
   }
 
 }

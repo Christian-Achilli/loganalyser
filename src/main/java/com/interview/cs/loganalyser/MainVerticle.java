@@ -108,6 +108,10 @@ public class MainVerticle extends AbstractVerticle {
 
               vertx.fileSystem().open(fileName, new OpenOptions().setRead(true).setWrite(false).setCreate(false), inputFileIsOpen -> {
 
+                if(inputFileIsOpen.failed()) {
+                  LOG.fatal("Could not open input file: " + fileName, inputFileIsOpen.cause());
+                }
+
                 AsyncFile asyncFile = inputFileIsOpen.result();
 
                 asyncFile
